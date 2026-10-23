@@ -25,6 +25,42 @@ buttons (at the top of the screen on phones). Click it to:
 
 The tab title shows the current page name so tabs are easy to tell apart.
 
+## Export and import
+
+Both are in Excalidraw's main menu (the ☰ button, top left), right below
+"Export image...". A short message at the bottom of the screen confirms the
+result or explains what went wrong.
+
+**Export all pages** downloads one `.zip`:
+
+```text
+excalidraw-pages-2026-10-23.zip
+├── pages.json                 page names and order
+├── 01 Page 1.excalidraw
+└── 02 Roadmap.excalidraw
+```
+
+Each `.excalidraw` file is a standard Excalidraw file with its images
+embedded, so you can open it in plain Excalidraw (menu > Open, or drag it onto
+the canvas) even without this extension.
+
+**Import pages...** accepts that `.zip`, any `.zip` of `.excalidraw` files, or one
+or more `.excalidraw` files. Imported pages are always added as new pages and
+never overwrite existing ones. A name that's already taken gets a number, like
+"Page 1 (2)".
+
+## Before you uninstall
+
+All pages live in excalidraw.com's own storage, so uninstalling deletes
+nothing, but plain Excalidraw only shows Page 1. The other pages stay hidden
+in storage and come back if you reinstall. Images that only appear on those
+hidden pages are not safe, though: without the extension, Excalidraw deletes
+images that are not on the open canvas once they are a day old.
+
+So **export all pages before uninstalling** or moving to another browser.
+Afterwards you can import the `.zip` with the extension, or open the page files
+one by one in plain Excalidraw.
+
 ## How Excalidraw stores your drawing
 
 excalidraw.com keeps a single scene in `localStorage`:

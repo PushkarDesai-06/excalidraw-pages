@@ -34,6 +34,7 @@
   // language, images) is shared by all pages.
   const SCOPED_KEYS = ["excalidraw", "excalidraw-state", "version-dataState"];
   const ELEMENTS_KEY = "excalidraw";
+  const APP_STATE_KEY = "excalidraw-state";
   const FILES_DB = "files-db";
   const FILES_STORE = "files-store";
 
@@ -128,7 +129,7 @@
     const taken = new Set(index.pages.map((p) => p.name));
     if (!taken.has(base)) return base;
     for (let n = 2; ; n++) {
-      if (!taken.has(`${base} ${n}`)) return `${base} ${n}`;
+      if (!taken.has(`${base} (${n})`)) return `${base} (${n})`;
     }
   }
 
@@ -310,6 +311,197 @@
     if (id === activeId) switchTo(fallback);
   }
 
+  // ---------------------------------------------------- export / import
+
+  // An export is a zip with one standard .excalidraw file per page, images
+  // included, so each page also opens in plain Excalidraw (useful after
+  // uninstalling). pages.json keeps the page names and order for importing.
+
+  const ARCHIVE_FORMAT = "excalidraw-pages";
+  const MANIFEST_NAME = "pages.json";
+  // The appState fields Excalidraw itself writes into a .excalidraw file.
+  const EXPORTED_APP_STATE = ["viewBackgroundColor", "gridSize", "gridStep", "gridModeEnabled"];
+
+  const parseJSON = (text, fallback) => {
+    try {
+      return text ? JSON.parse(text) : fallback;
+    } catch {
+      return fallback;
+    }
+  };
+  const isScene = (data) => !!data && data.type === "excalidraw" && Array.isArray(data.elements);
+  const baseName = (path) => path.split("/").pop().replace(/\.(excalidraw|json)$/i, "");
+  const fileSafe = (name) =>
+    name.replace(/[\\/:*?"<>|\u0000-\u001f]/g, "_").trim().slice(0, 80) || "Untitled";
+
+  function openFilesDb() {
+    return new Promise((resolve, reject) => {
+      const request = indexedDB.open(FILES_DB);
+      // Same layout idb-keyval creates for Excalidraw, in case it hasn't yet.
+      request.onupgradeneeded = () => request.result.createObjectStore(FILES_STORE);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  function readFiles(db, ids) {
+    return new Promise((resolve, reject) => {
+      const files = {};
+      if (!ids.length) return resolve(files);
+      const tx = db.transaction(FILES_STORE, "readonly");
+      const store = tx.objectStore(FILES_STORE);
+      for (const id of ids) {
+        store.get(id).onsuccess = (event) => {
+          if (event.target.result) files[id] = event.target.result;
+        };
+      }
+      tx.oncomplete = () => resolve(files);
+      tx.onerror = () => reject(tx.error);
+    });
+  }
+
+  function writeFiles(db, files) {
+    return new Promise((resolve, reject) => {
+      const entries = Object.entries(files || {}).filter(
+        ([, file]) => file && typeof file.dataURL === "string",
+      );
+      if (!entries.length) return resolve();
+      const tx = db.transaction(FILES_STORE, "readwrite");
+      const store = tx.objectStore(FILES_STORE);
+      for (const [id, file] of entries) {
+        store.put({ ...file, id: file.id || id, lastRetrieved: Date.now() }, file.id || id);
+      }
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  }
+
+  async function exportAll() {
+    flushExcalidrawSave();
+    const { pages } = readIndex();
+    const digits = Math.max(2, String(pages.length).length);
+    const manifest = {
+      format: ARCHIVE_FORMAT,
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      pages: [],
+    };
+    const entries = [];
+    const db = await openFilesDb();
+    try {
+      for (const [i, page] of pages.entries()) {
+        const stored = parseJSON(lsGet(storageKey(ELEMENTS_KEY, page.id)), []);
+        const elements = (Array.isArray(stored) ? stored : []).filter((el) => el && !el.isDeleted);
+        const state = parseJSON(lsGet(storageKey(APP_STATE_KEY, page.id)), null) || {};
+        const appState = {};
+        for (const key of EXPORTED_APP_STATE) if (key in state) appState[key] = state[key];
+        const fileIds = [...new Set(elements.map((el) => el.fileId).filter(Boolean))];
+        const scene = {
+          type: "excalidraw",
+          version: 2,
+          source: location.origin,
+          elements,
+          appState,
+          files: await readFiles(db, fileIds),
+        };
+        const file = `${String(i + 1).padStart(digits, "0")} ${fileSafe(page.name)}.excalidraw`;
+        manifest.pages.push({ name: page.name, file });
+        entries.push({ name: file, data: JSON.stringify(scene) });
+      }
+    } finally {
+      db.close();
+    }
+    entries.unshift({ name: MANIFEST_NAME, data: JSON.stringify(manifest, null, 2) });
+    const blob = await window.__excalidrawPagesZip.createZip(entries);
+    const date = new Date().toISOString().slice(0, 10);
+    return { blob, filename: `excalidraw-pages-${date}.zip`, count: pages.length };
+  }
+
+  // Accepts our zip exports, any zip of .excalidraw files, and single
+  // .excalidraw files. Returns [{ name, scene }] in page order.
+  async function readScenes(file) {
+    const magic = new Uint8Array(await file.slice(0, 2).arrayBuffer());
+    if (magic[0] !== 0x50 || magic[1] !== 0x4b) {
+      const scene = parseJSON(await file.text(), null);
+      if (!isScene(scene)) throw new Error(`"${file.name}" is not an Excalidraw file`);
+      return [{ name: baseName(file.name), scene }];
+    }
+
+    const decoder = new TextDecoder();
+    const text = (entry) => decoder.decode(entry.data);
+    const entries = (await window.__excalidrawPagesZip.readZip(file)).filter(
+      (entry) => !entry.name.startsWith("__MACOSX/"),
+    );
+    const manifestEntry = entries.find((e) => e.name.split("/").pop() === MANIFEST_NAME);
+    const manifest = manifestEntry && parseJSON(text(manifestEntry), null);
+
+    let listed;
+    if (manifest && manifest.format === ARCHIVE_FORMAT && Array.isArray(manifest.pages)) {
+      // Paths are relative to pages.json, in case the zip was re-made from a folder.
+      const dir = manifestEntry.name.slice(0, -MANIFEST_NAME.length);
+      listed = manifest.pages.map((page) => ({
+        name: page.name,
+        entry: entries.find((e) => e.name === dir + page.file),
+      }));
+    } else {
+      listed = entries
+        .filter((e) => /\.excalidraw$/i.test(e.name))
+        .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))
+        .map((entry) => ({ name: baseName(entry.name), entry }));
+    }
+
+    const scenes = [];
+    for (const { name, entry } of listed) {
+      const scene = entry && parseJSON(text(entry), null);
+      if (isScene(scene)) scenes.push({ name, scene });
+    }
+    if (!scenes.length) throw new Error(`No Excalidraw pages found in "${file.name}"`);
+    return scenes;
+  }
+
+  // Imported pages are always added as new pages; nothing is overwritten.
+  async function importFiles(fileList) {
+    const scenes = [];
+    for (const file of fileList) scenes.push(...(await readScenes(file)));
+
+    // Images first: if saving the pages fails, unused images are cleaned up
+    // by Excalidraw later, whereas pages without their images stay broken.
+    const db = await openFilesDb();
+    try {
+      for (const { scene } of scenes) await writeFiles(db, scene.files);
+    } finally {
+      db.close();
+    }
+
+    const ids = [];
+    try {
+      for (const { scene } of scenes) {
+        const id = newPageId();
+        ids.push(id);
+        lsSet(storageKey(ELEMENTS_KEY, id), JSON.stringify(scene.elements));
+        lsSet(storageKey(APP_STATE_KEY, id), JSON.stringify(scene.appState || {}));
+      }
+    } catch (err) {
+      for (const id of ids) for (const key of SCOPED_KEYS) lsRemove(storageKey(key, id));
+      if (err && err.name === "QuotaExceededError") {
+        throw new Error("Not enough browser storage left to import these pages");
+      }
+      throw err;
+    }
+
+    updateIndex((index) => {
+      scenes.forEach(({ name }, i) => {
+        const trimmed = typeof name === "string" ? name.trim() : "";
+        index.pages.push({
+          id: ids[i],
+          name: trimmed ? uniqueName(index, trimmed) : nextPageName(index),
+          createdAt: Date.now(),
+        });
+      });
+    });
+    return ids;
+  }
+
   // Another tab changed the index. If it deleted the page this tab shows,
   // move to a page that still exists.
   window.addEventListener("storage", (event) => {
@@ -337,6 +529,8 @@
       rename,
       move,
       remove,
+      exportAll,
+      importFiles,
       subscribe(fn) {
         listeners.add(fn);
         return () => listeners.delete(fn);

@@ -2,7 +2,8 @@
 //
 // A pill in Excalidraw's bottom bar showing the active page. It
 // opens a menu to switch, create, rename, duplicate, reorder (drag) and
-// delete pages. Rendered inside a shadow root so Excalidraw's styles and ours
+// delete pages (export and import live in Excalidraw's own menu, see
+// menu.js). Rendered inside a shadow root so Excalidraw's styles and ours
 // cannot leak into each other; colors are copied from Excalidraw's own CSS
 // variables so it follows the light/dark theme.
 
@@ -156,17 +157,22 @@
     .pill-button.danger { background: var(--danger); color: #fff; }
     .pill-button.danger:hover { filter: brightness(1.08); }
 
-    .new {
-      display: flex; align-items: center; gap: 8px; width: 100%; height: 34px;
-      margin-top: 9px; padding: 0 8px; position: relative;
-      border-radius: 6px; color: var(--accent); font-weight: 600;
+    .footer {
+      display: flex; flex-direction: column; gap: 2px;
+      margin-top: 9px; position: relative;
     }
     /* Divider centered in the gap above, so it never touches a highlight. */
-    .new::before {
+    .footer::before {
       content: ""; position: absolute; left: 0; right: 0; top: -5px;
       height: 1px; background: var(--border); pointer-events: none;
     }
-    .new:hover { background: var(--hover); }
+    .item {
+      display: flex; align-items: center; gap: 8px; width: 100%; height: 34px;
+      padding: 0 8px; border-radius: 6px;
+    }
+    .item:hover:not(:disabled) { background: var(--hover); }
+    .item:disabled { opacity: .5; cursor: default; }
+    .item.new { color: var(--accent); font-weight: 600; }
   `;
 
   function icon(name) {
@@ -207,7 +213,12 @@
     const host = el("div", { id: "excalidraw-pages-host" });
     const root = host.attachShadow({ mode: "open" });
 
-    const state = { open: false, renamingId: null, confirmingId: null, dragId: null };
+    const state = {
+      open: false,
+      renamingId: null,
+      confirmingId: null,
+      dragId: null,
+    };
 
     const label = el("span", { class: "label" });
     const count = el("span", { class: "count" });
@@ -232,7 +243,7 @@
     const newButton = el(
       "button",
       {
-        class: "new",
+        class: "item new",
         onclick: () => {
           const id = api.create();
           if (id) api.switchTo(id);
@@ -246,7 +257,7 @@
       { class: "menu", hidden: true },
       el("div", { class: "heading" }, "Pages"),
       list,
-      newButton,
+      el("div", { class: "footer" }, newButton),
     );
 
     const container = el("div", {}, menu, trigger);
