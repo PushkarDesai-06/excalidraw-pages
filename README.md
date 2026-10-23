@@ -99,3 +99,7 @@ no changes and doesn't know pages exist.
   new page first if you want to keep it separate.
 - This relies on Excalidraw's storage key names. If excalidraw.com changes
   them, `SCOPED_KEYS` in `src/store.js` needs updating.
+
+## License
+
+[MIT](LICENSE)
