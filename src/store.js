@@ -64,6 +64,20 @@
   const newPageId = () =>
     Math.random().toString(36).slice(2, 8) + Date.now().toString(36).slice(-4);
 
+  // Declared before anything that writes the index: startup itself writes it
+  // (see "active page" below), and touching a `const` before its declaration
+  // throws, which would abort this script before Storage is patched.
+  const listeners = new Set();
+  function notify() {
+    for (const fn of listeners) {
+      try {
+        fn();
+      } catch (err) {
+        console.error("[excalidraw-pages]", err);
+      }
+    }
+  }
+
   // ---------------------------------------------------------------- index
 
   // Rebuilds an index from the keys on disk. Used on first run (adopting the
@@ -210,17 +224,6 @@
   };
 
   // ------------------------------------------------------------ actions
-
-  const listeners = new Set();
-  function notify() {
-    for (const fn of listeners) {
-      try {
-        fn();
-      } catch (err) {
-        console.error("[excalidraw-pages]", err);
-      }
-    }
-  }
 
   // Excalidraw debounces its saves. Its window "blur" handler flushes the
   // pending save synchronously, which is what we want before we touch the
