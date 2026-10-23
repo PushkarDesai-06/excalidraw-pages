@@ -6,10 +6,52 @@ different page at the same time.
 
 ## Install
 
+The extension isn't on the Chrome Web Store, so you load it from a copy of
+this repository.
+
+### 1. Get the code
+
+**With git:**
+
+```sh
+git clone https://github.com/PushkarDesai-06/excalidraw-pages.git
+```
+
+This creates an `excalidraw-pages` folder.
+
+**Without git:** on the
+[repository page](https://github.com/PushkarDesai-06/excalidraw-pages), click
+**Code** > **Download ZIP**, then unzip it. This gives you an
+`excalidraw-pages-main` folder.
+
+Put the folder somewhere permanent before the next step. Chrome loads the
+extension from that folder every time it starts, so moving or deleting it
+removes the extension.
+
+### 2. Load it in Chrome
+
 1. Open `chrome://extensions`.
 2. Turn on **Developer mode** (top right).
-3. Click **Load unpacked** and pick this folder.
+3. Click **Load unpacked** and select the folder from step 1, the one that
+   contains `manifest.json`. With the ZIP download, make sure you pick the
+   unzipped folder itself and not a parent folder around it.
 4. Reload any open excalidraw.com tabs.
+
+The pages button appears in Excalidraw's bottom bar. The same steps work in
+other Chromium browsers such as Edge (`edge://extensions`) and Brave
+(`brave://extensions`).
+
+### Updating
+
+1. Get the new code: run `git pull` inside the folder, or download the ZIP
+   again and replace the old folder's contents with the new ones (keep the
+   same location).
+2. On `chrome://extensions`, click the reload icon on the Excalidraw Pages
+   card.
+3. Reload any open excalidraw.com tabs.
+
+Your pages are kept by excalidraw.com, not by the extension, so reloading or
+reinstalling the extension doesn't lose them.
 
 ## Using it
 
