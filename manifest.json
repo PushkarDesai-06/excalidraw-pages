@@ -1,0 +1,20 @@
+{
+  "manifest_version": 3,
+  "name": "Excalidraw Pages",
+  "version": "1.0.0",
+  "description": "Multiple named canvases (pages) for excalidraw.com, with a different page per browser tab.",
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://excalidraw.com/*"],
+      "js": ["src/store.js", "src/ui.js"],
+      "run_at": "document_start",
+      "world": "MAIN",
+      "all_frames": false
+    }
+  ]
+}
